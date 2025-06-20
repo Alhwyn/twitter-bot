@@ -1,0 +1,13 @@
+[package]
+name = "tweet-terminal"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+figlet-rs = "0.1.5"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+dotenv = "0.15"
+oauth1-request = "0.6.1"
+clap = { version = "4.4", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
