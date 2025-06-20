@@ -1,80 +1,42 @@
 use std::env;
 use reqwest::{header, Client};
+use std::error::Error;
 
 pub struct TwitterConfig {
-    client: Cleint,
-    api_base_url: String,
+    pub client: Client,
+    pub api_base_url: String,
+    pub bearer_token: String,
 }
 
 pub struct TwitterAuth {
-    pub signatre_method: String,
+    pub signature_method: String,
     pub consumer_key: String,
     pub consumer_key_secret: String,
     pub access_token: String,
     pub token_secret: String,
 }
 
-
+pub struct TwitterField {
+    pub client: Client,
+    pub api_base_url: String,
+    pub bearer_token: String,
+}
 
 impl TwitterField {
     pub fn new(config: TwitterConfig) -> Result<Self, Box<dyn Error>> {
+
+        // set up the headers 
         let mut headers = header::HeaderMap::new();
 
+        // now build the header tod the resoet 
         headers.insert(
             header::AUTHORIZATION,
             header::HeaderValue::from_str(&format!("Bearer {}", config.bearer_token))?,
         );
-
+        Ok(TwitterField {
+            client: config.client,
+            api_base_url: config.api_base_url,
+            bearer_token: config.bearer_token,
+        })
     }
-
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* pub async fn create_post(_tweet: &str) -> Result<(), Box<dyn std::error::Error>> {
-    dotenv::dotenv().ok(); 
-
-    let auth_url  = env::var("AUTH_URL").expect("AUTH_URL must be set");
-
-    
-    println!("Twitter authentication logic goes here. {}", auth_url);
-
-
-    let client = reqwest::Client::new();
-
-
-    
-    let _res = client
-        .post(auth_url)
-        .body("the exact body that is sent")
-        .send()
-        .await?;
-
-    println!("Authentication request sent successfully. {}", _res.status());
-
-    Ok(())
-} */
