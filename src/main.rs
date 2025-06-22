@@ -18,8 +18,12 @@ fn main() {
     match TwitterField::new(config) {
         Ok(twitter) => {
             println!("TwitterField initialized successfully.");
+            
             // Use the twitter instance to call methods that read its fields
-            twitter.print_base_url();
+            let twitter_field: String = twitter.get_field();
+
+
+            println!("Twitter Field: {}", twitter_field);
 
         }
         Err(e) => {

@@ -9,22 +9,26 @@ pub struct TwitterField {
 
 impl TwitterField {
 
-    pub fn print_base_url(&self) {
-        println!("{}", self.api_base_url);
+    pub fn get_field(&self) -> String{
+
+        let output = format!("{} {} {}",
+            self.api_base_url,
+            self.bearer_token
+        );
+
+        return output
     }
 
-
-    
     pub fn new(config: TwitterField) -> Result<Self, Box<dyn Error>> {
 
-        // set up the headers 
         let mut headers = header::HeaderMap::new();
 
-        // now build the header tod the resoet 
         headers.insert(
             header::AUTHORIZATION,
             header::HeaderValue::from_str(&format!("Bearer {}", config.bearer_token))?,
         );
+
+        println!("Bearer token set for authentication.");
 
 
         Ok(TwitterField {
