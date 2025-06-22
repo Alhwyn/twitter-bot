@@ -1,33 +1,26 @@
-mod api;
+use egg_mode::{KeyPair, Token, tweet::DraftTweet};
 use std::env;
-use crate::api::{TwitterField};
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv::dotenv().ok();
 
-fn main() {
-    let client = reqwest::Client::new();
+    let consumer_key = env::var("CLIENT_ID")?;
+    let consumer_secret = env::var("CLIENT_SECRET")?;
+    let access_token = env::var("ACCESS_TOKEN")?;
+    let access_token_secret = env::var("ACCESS_TOKEN_SECRET")?;
 
-    let bearer_token = env::var("BEARER_TOKEN").expect("TWITTER_BEARER_TOKEN must be set");
-
-
-    let config = TwitterField {
-        client, 
-        api_base_url: "https://api.twitter.com/2".to_string(),
-        bearer_token: format!("Bearer {}", bearer_token),
+    let consumer_token = KeyPair::new(consumer_key, consumer_secret);
+    let access_token = KeyPair::new(access_token, access_token_secret);
+    let token = Token::Access {
+        consumer: consumer_token,
+        access: access_token,
     };
 
-    match TwitterField::new(config) {
-        Ok(twitter) => {
-            println!("TwitterField initialized successfully.");
-            
-            // Use the twitter instance to call methods that read its fields
-            let twitter_field: String = twitter.get_field();
+    let draft = DraftTweet::new("Hello, world from egg-mode!");
+    let tweet = draft.send(&token).await?;
 
+    println!("Tweet posted: {:?}", tweet);
 
-            println!("Twitter Field: {}", twitter_field);
-
-        }
-        Err(e) => {
-            eprintln!("Error initializing TwitterField: {}", e);
-        }
-    }
+    Ok(())
 }
