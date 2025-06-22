@@ -1,4 +1,3 @@
-use std::env;
 use reqwest::{header, Client};
 use std::error::Error;
 
@@ -15,6 +14,7 @@ impl TwitterField {
     }
 
 
+    
     pub fn new(config: TwitterField) -> Result<Self, Box<dyn Error>> {
 
         // set up the headers 
