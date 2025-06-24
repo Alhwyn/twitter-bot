@@ -7,6 +7,65 @@ use oauth2::basic::{BasicClient, BasicRequestTokenError, BasicTokenResponse};
 use url::Url;
 
 
+
+pub enum Scope {
+    #[strum(serialize = "tweet.read")]
+    #[serde(rename = "tweet.read")]
+    TweetRead,
+    #[strum(serialize = "tweet.write")]
+    #[serde(rename = "tweet.write")]
+    TweetWrite,
+    #[strum(serialize = "tweet.moderate.write")]
+    #[serde(rename = "tweet.moderate.write")]
+    TweetModerateWrite,
+    #[strum(serialize = "users.read")]
+    #[serde(rename = "users.read")]
+    UsersRead,
+    #[strum(serialize = "follows.read")]
+    #[serde(rename = "follows.read")]
+    FollowsRead,
+    #[strum(serialize = "follows.write")]
+    #[serde(rename = "follows.write")]
+    FollowsWrite,
+    #[strum(serialize = "offline.access")]
+    #[serde(rename = "offline.access")]
+    OfflineAccess,
+    #[strum(serialize = "space.read")]
+    #[serde(rename = "space.read")]
+    SpaceRead,
+    #[strum(serialize = "mute.read")]
+    #[serde(rename = "mute.read")]
+    MuteRead,
+    #[strum(serialize = "mute.write")]
+    #[serde(rename = "mute.write")]
+    MuteWrite,
+    #[strum(serialize = "like.read")]
+    #[serde(rename = "like.read")]
+    LikeRead,
+    #[strum(serialize = "like.write")]
+    #[serde(rename = "like.write")]
+    LikeWrite,
+    #[strum(serialize = "list.read")]
+    #[serde(rename = "list.read")]
+    ListRead,
+    #[strum(serialize = "list.write")]
+    #[serde(rename = "list.write")]
+    ListWrite,
+    #[strum(serialize = "block.read")]
+    #[serde(rename = "block.read")]
+    BlockRead,
+    #[strum(serialize = "block.write")]
+    #[serde(rename = "block.write")]
+    BlockWrite,
+    #[strum(serialize = "bookmark.read")]
+    #[serde(rename = "bookmark.read")]
+    BookmarkRead,
+    #[strum(serialize = "bookmark.write")]
+    #[serde(rename = "bookmark.write")]
+    BookmarkWrite,
+}
+
+
 pub struct Oauth2Client(BasicClient);
 
 impl Oauth2Client {
@@ -35,5 +94,57 @@ impl Oauth2Client {
             .set_redirect_uri(RedirectUrl::from_url(callback_url)),
         )
     }
+
+    pub fn auth_url(
+        &self,
+        challenge: PkceCodeChallenge,
+        scopes: impl IntoIterator<Item = Scope>,
+    ) -> (Url, CarfToken) {
+        self.0
+            .authorize_url(CsrfToken::new_random)
+            .add_scopes(scopes.into_iter().map(|s| s.to_string()))
+            .set_pkce_challenge(challenge)
+            .url()
+    }
+
+    pub async fn request_token(
+        &self.0,
+        code: AuthorizationCode,
+        verifier: PkceCodeVerifier,
+    ) -> Result<Oauth2Client> {
+        let res = Self
+            .0
+            .exchange_code(code)
+            .set_pkce_verifier(verifier)
+            .request_async(oauth2::reqwest::http_client)
+            .await?;
+        res.try_into()
+    }
+
+    pub async fn revoke_token(
+        $self, 
+        token: StandardRevocableToken
+    ) -> Result<()> {
+        Ok(self.0
+            .revoke_token(token)
+            .request_async(oauth2::reqwest::http_client)
+            .await?)
+
+    }
+
+    pub async fn refresh_token(
+        &self,
+        token: &RefreshToken
+    ) -> Result<Oauth2Client> {
+        let res = self.0
+            .exchange_refresh_token(token)
+            .request_async(oauth2::reqwest::http_client)
+            .await?;
+        res.try_into()
+    }
+
+    pub asnyc fn refresh_token_if_expired(
+        
+    )
 
 }
