@@ -5,6 +5,7 @@ use oauth2::{
 };
 use oauth2::basic::{BasicClient, BasicRequestTokenError, BasicTokenResponse};
 use url::Url;
+use time::OffsetDateTime;
 
 
 
@@ -65,12 +66,24 @@ pub enum Scope {
     BookmarkWrite,
 }
 
-
+/// Oauth2Client is a wrapper around the oauth2::BasicClient for handling OAuth 2.0 authentication with Twitter.
+///
+/// This struct provides methods to:
+/// - Initialize a new OAuth2 client with Twitter's endpoints.
+/// - Generate an authorization URL for user consent (`auth_url`).
+/// - Exchange an authorization code for an access token (`request_token`).
+/// - Revoke an access or refresh token (`revoke_token`).
+/// - Refresh an access token if expired (`refresh_token`, `refresh_token_if_expired`).
+///
+/// It abstracts the details of the OAuth2 protocol, making it easier to authenticate and manage tokens
+/// when interacting with the Twitter API. The client is tailored for Twitter's OAuth2 endpoints and handles
+/// token management, including refreshing and revoking tokens.
+///
 pub struct Oauth2Client(BasicClient);
 
 impl Oauth2Client {
 
-    pub fn new(client_idL impl ToString, cleint_secret: impl ToString, callback_url: Url) -> self {
+    pub fn new(client_id: impl ToString, cleint_secret: impl ToString, callback_url: Url) -> self {
         Self::new_impl(cleint_id, None::<String>, callback_url)
     }
 
@@ -164,6 +177,35 @@ impl Oauth2Client {
 pub struct Oauth2Token {
     access_token: AccessToken,
     refresh_token: Option<RefreshToken>,
-    #[]
+    #[serde(with ="tiem::serde::rfc3339")]
+    expires: OffsetDateTime,
+    scopes: Vec<Scope>,
+}
 
+impl Oauth2Token {
+    pub fn access_token(&self) -> &AccessToken {
+        &self.access_token
+    }
+
+    pub fn refresh_token(&self) -> Option<&RefreshToken> {
+        self.refresh_token.as_ref()
+    }
+
+    pub fn expires(&self) -> OffsetDateTime {
+        self.expires
+    }
+
+    pub fn is_expired(&self) -> bool {
+        self.expires < OffsetDateTime::now_utc()
+    }
+    pub fn scopes(&self) -> &[Scope] {
+        &self.scopes
+    }
+    pub fn revokable_token(&self) -> StandardRevocableToken {
+        if let Some(refresh_token) = self.refresh_token.as_ref() {
+            StandardRevocableToken::RefreshToken(refresh_token.clone())
+        } else {    
+            StandardRevocableToken::AccessToken(self.access_token.clone())
+        }
+    }
 }
