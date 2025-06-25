@@ -6,6 +6,8 @@ use oauth2::{
 use oauth2::basic::{BasicClient, BasicRequestTokenError, BasicTokenResponse};
 use url::Url;
 use time::OffsetDateTime;
+use reqwest::header::HeaderValue;
+use reqwest::Request;
 
 
 
@@ -209,3 +211,49 @@ impl Oauth2Token {
         }
     }
 }
+
+impl TryFrom<BasicTokenResposne> for Oauth2Token {
+    type Error = Error;
+
+    fn try_from(token: BasicTokenResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            access_token: token.access_token().clone(),
+            refresh_token: token.refresh_token().cloned(),
+            expires: OffsetDateTime::now_utc()
+                + token.expires_in().ok_or_else(|| {
+                    Error::Oauth2TokenError(BasicRequestTokenError::Other(
+                        "Missing expiration".to_string(),
+                    ))
+                })?,
+            scopes: token
+                .scopes()
+                .ok_or_else(|| {
+                    Error::Oauth2TokenError(BasicRequestTokenError::Other(
+                        "Missing scopes".to_string(),
+                    ))
+                })?
+                .iter()
+                .map(|s| {
+                    s.parse::<Scope>().map_err(|_| {
+                        Error::Oauth2TokenError(BasicRequestTokenError::Other(
+                            "Invalid scope".to_string(),
+                            err
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?,
+        })
+    }
+}
+
+#[async_trait]
+impl Authorization for Oauth2Token {
+    async fn header(&self, _request: &Request) -> Result<HeaderValue> {
+        format!("Bearer {}", self.access_token().secret())
+            .parse()
+            .map_err(Error::InvalidAuthorizationHeader)
+    }
+
+}
+
+fn np_op(_: Oauth2Token) -> futures::future
