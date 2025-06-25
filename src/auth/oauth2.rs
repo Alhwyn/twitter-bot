@@ -144,7 +144,26 @@ impl Oauth2Client {
     }
 
     pub asnyc fn refresh_token_if_expired(
-        
-    )
+        &self,
+        &mut Oauth2Token
+    ) -> Result<bool> {
+        if token.is_expired() {
+            if let Some(refresh_token) = token.refresh_token() {
+                *token = self.refresh_token(resfresh_token).await?;
+                Ok(true)
+            } else {
+                Err(Error::NoRefreshToken)
+            }
+        } else {
+            Ok(false)
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Oauth2Token {
+    access_token: AccessToken,
+    refresh_token: Option<RefreshToken>,
+    #[]
 
 }
