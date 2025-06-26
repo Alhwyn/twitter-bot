@@ -22,16 +22,143 @@ pub struct Oauth2Ctx {
     token: Option<Oauth2Token>,
 }
 
-async fn login(Extension(ctx): xtension<Arc<Mutex<Oauth2Ctx>>>) -> into IntoResponse {
+#[derive(Deserialize)]
+struct CallbackParams {
+    code: String,
+    state: CsrfToken,
+}
+
+async fn login(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
     let mut ctx = ctx.lock().unwrap();
 
     // creater challenge 
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
 
+    // create teh auth url
+    let (url, state) = ctx.client.auth_url(
+        challenge,
+        [
+            Scope::TweetRead,
+            Scope::TweetWrite,
+            Scope::UsersRead,
+            Scope::OfflineAccess,
+        ],
+    );
+
+    // set context for reference n callback
+    ctx.verifier = Some(verifier);
+    ctx.state = Some(state);
+
+    // redirect to auth url
+    Redirect::to(url.to_string().parse().unwrap())
 }
 
+async fn callback(
+    Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>,
+    Query(CallbackParams { code, state}): Query<CallbackParams>,
+) -> impl IntoResponse {
+    let (client, verifier) = {
+        let mut ctx = ctx.lock().unwrap();
+
+        // get previous tate from from ctx (from login)
+        let saved_state = ctx.state.take().ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "No previous state found".to_string(),
+            )
+        })?;
+
+        // check state  returned to see if it mathces , or otherwise throw an error
+        if state.secret() != saved_state.secret() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "State does not match".to_string(),
+            ));
+        }
+
+        // get verifier from ctx 
+        let verifier = ctx.verifier.take().ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "No PKCE verifier found".to_string(),
+            )
+        })?;
+        let client = ctx.client.clone();
+        (client, verifier)
+    };
+
+    // reqeust oauth2 token
+    let token = client
+        .request_token(code, verifier)
+        .await
+        .map_err(|e| (Statusode::INTERNAL_SERVER_FOUND, e.to_string()))?;
+
+    // set context for us with the twitter API
+    ctx.lock().unwrap().token = Some(token);
 
 
+    Ok(Redirect::to("/tweets".parse().unwrap()))
+}
+
+async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
+
+    // get oaouth2 token 
+
+    let (mut oauth_token, oauth_client) = {
+        let ctx = ctx.lock().unwrap();
+        let token = ctx
+            .token
+            .as_ref()
+            .ok_or_else(|| (StatusCode::UNAUTHORIZED, "User not logged in!".to_string()))?
+            .clone();
+        let client = ctx.client.clone();
+        (token, client)
+    };
+
+    // refresh oauth  token if expired
+    if oauth_client
+        .revoke_token_if_expired(&mut oauth_token)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    {
+        // save oauth token if refreshed
+        ctx.lock().unwrap().token = Some(oauth_token.clone());
+    }
+
+    let api = TwitterApi::new(oatuh_token);
+
+    let tweet = api
+        .get_tweets(20)
+        .send()
+        .await
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    Ok::<_, (StatusCode, String)>(Json(tweet.into_data()))
+
+}
+
+async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2CLient>>>) -> impl IntoResponse {
+
+
+    // getting the oauth token
+    let (oauth_token, oauth_client) = {
+        let ctx = ctx.lock().unwrap();
+        let token = ctx
+            .token
+            .as_ref()
+            .ok_or_else(|| (StatusCode::UNAUTHORIZED, "User not logged in!".to_string()))?
+            .clone();
+        
+        let client = ctx.client.clone();
+        (token, client)
+    };
+
+    // revoke token
+    oauth_client
+        .revoke_token(oauth_token.revokable_token())
+        .await
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    Ok::<_, (StatusCode, String)>("Token revolked successfully!".to_string())
+}
 
 
 #[tokio::main]
@@ -51,17 +178,24 @@ async fn main()  {
     // initialize Oauth2Client with id and secret the callback to this server
     let oauth_ctx = Oauth2Ctx {
         client: Oauth2CLient::new(
-            std::env:var::("CLIENT_ID").expect("could not find CLIENT_ID"),
+            std::env::var("CLIENT_ID").expect("could not find CLIENT_ID"),
             std::env::var("CLIENT_SECRET").expect("could not find CLIENT_SECRET"),
             format!("http://{addr}/callback").parse().unwrap(),
-            verifier: State,
-            state: None,
-            token: None,
-        )
+        ),
+        verifier: State,
+        state: None,
+        token: None,
     };
 
     // init server
     let app = Router::new()
-        .route("/login", get(login))
+        .route("/login", get(login));
+
+    println!("\nOpen http://{}/login in your browser\n", addr);
+    tracing::debug!("Serving at {}", addr);
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 
 }
