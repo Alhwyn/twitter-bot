@@ -4,19 +4,30 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-figlet-rs = "0.1.5"
-reqwest = { version = "0.12", features = ["blocking", "json"] }
-dotenv = "0.15"
-oauth1-request = "0.6.1"
-clap = { version = "4.4", features = ["derive"] }
+async-trait = "0.1"
+axum = "0.4.8"
+futures = "0.3"
+oauth1 = { version = "0.5", package = "oauth1-request" }
+oauth2 = { version = "4.1", optional = true, default-features = false, features = ["reqwest"] }
+percent-encoding = "2.1"
+pin-project-lite = "0.2"
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.0", features = ["full"] }
-twitter-v2 = "0.1.8"
-egg-mode = "0.16.1"
-oauth2 = "5.0.0"
-url = "2.5.4"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-axum = "0.8.4"
-tower-http = { version = "0.6.6", features = ["trace"] }
-serde = { version = "1.0.219", features = ["derive"] }
-tracing = "0.1.40"
+serde_urlencoded = "0.7"
+strum = { version = "0.24", features = ["derive"] }
+thiserror = "1.0"
+time = { version = "0.3", features = ["serde", "serde-well-known"] }
+tokio = { version = "1.0", default-features = false, features = ["sync"] }
+tower-http = { version = "0.2.5", features = ["trace"] }
+tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
+twitterv2 = "0.1.7"
+url = "2.2"
+
+[dev-dependencies]
+lazy_static = "1.4.0"
+rand = "0.8.5"
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1.32"
+time = { version = "0.3", features = ["macros"] }
+pretty_assertions = "1.2.0"

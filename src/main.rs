@@ -17,7 +17,7 @@ use twitter_v2::TwitterApi;
 
 pub struct Oauth2Ctx {
     client: Oauth2Client,
-    verfier: Option<PkceCodeVerifier>,
+    verifier: Option<PkceCodeVerifier>,
     state: Option<CsrfToken>,
     token: Option<Oauth2Token>,
 }
@@ -91,7 +91,7 @@ async fn callback(
     let token = client
         .request_token(code, verifier)
         .await
-        .map_err(|e| (Statusode::INTERNAL_SERVER_FOUND, e.to_string()))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_FOUND, e.to_string()))?;
 
     // set context for us with the twitter API
     ctx.lock().unwrap().token = Some(token);
@@ -117,7 +117,7 @@ async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
 
     // refresh oauth  token if expired
     if oauth_client
-        .revoke_token_if_expired(&mut oauth_token)
+        .refresh_token_if_expired(&mut oauth_token)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     {
@@ -125,7 +125,7 @@ async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
         ctx.lock().unwrap().token = Some(oauth_token.clone());
     }
 
-    let api = TwitterApi::new(oatuh_token);
+    let api = TwitterApi::new(oauth_token);
 
     let tweet = api
         .get_tweets(20)
@@ -136,7 +136,7 @@ async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
 
 }
 
-async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2CLient>>>) -> impl IntoResponse {
+async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Client>>>) -> impl IntoResponse {
 
 
     // getting the oauth token
@@ -177,12 +177,12 @@ async fn main()  {
 
     // initialize Oauth2Client with id and secret the callback to this server
     let oauth_ctx = Oauth2Ctx {
-        client: Oauth2CLient::new(
+        client: Oauth2Client::new(
             std::env::var("CLIENT_ID").expect("could not find CLIENT_ID"),
             std::env::var("CLIENT_SECRET").expect("could not find CLIENT_SECRET"),
             format!("http://{addr}/callback").parse().unwrap(),
         ),
-        verifier: State,
+        verifier: None,
         state: None,
         token: None,
     };
