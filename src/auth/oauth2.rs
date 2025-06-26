@@ -256,4 +256,82 @@ impl Authorization for Oauth2Token {
 
 }
 
-fn np_op(_: Oauth2Token) -> futures::future
+fn np_op(_: Oauth2Token) -> futures::future::Ready<Result<()>> {
+    futures::future::ok(())
+}
+
+pub type NoCallback = fn(Oauth2Token) -> futures::future::Ready<Result<()>>;
+
+#[derive(Clone, Debug)]
+pub struct RefreshableOauth2Token<C> {
+    oauth_client: Oauth2Client,
+    token: Arc<RwLock<Oauth2Token>>,
+    callback: C,
+}
+
+
+impl RefreshableOauth2Token<NoCallback> {
+    pub fn new(oauth_client: Oauth2Client, token: Oauth2Token) -> Self {
+        Self {
+            oauth_client,
+            token: Arc::new(RwLock::new(token)),
+            callback: no_op,
+        }
+    }
+}
+
+impl<C> RefreshableOauth2Token<C> {
+    pub fn with_callback<T>(&self, callback: T) -> RefreshableOauth2Token<T> {
+        RefreshableOauth2Token {
+            oauth_client: self.oauth_client.clone(),
+            token: self.token.clone(),
+            callback,
+        }
+    }
+
+    pub async fn token(&self) -> RwLockLockReadGuard<'_, Oauth2Token> {
+        self.token.read().await
+    }
+
+    pub async fn revoke(&self) -> Result<()> {
+        self.oauth_client
+            .revoke_token(self.token.read().await.revokable_token())
+            .await
+    }
+}
+
+impl<C, F> RefreshableOauth2Token<C>
+where
+    C: fn(Oauth2Token) -> F + Send + Sync,
+    F: Future<Output = Result<()>>,
+{
+    pub async fn refresh(&self) -> Result<()> {
+        let mut token = self.token.write().await;
+        *token = self
+            .oauth_client
+            .refresh_token(token.refresh_token.as_ref().ok_or(Error::NoRefreshtoken)?)
+            .await?;
+        (self.callback)(token.clone()).await?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<>C, F> Authorization for RefreshableOauth2Token<C>
+where 
+    C: Fn(Oauth2Token) -> F + Send + Sync,
+    F: Future<Output = Result<()>> + Send,
+{
+    async fn header(&self, request: &Request) -> Result<HeaderValue> {
+        let mut token = slef.token.write().await;
+        if self 
+            .oauth_client
+            .refresh_roken_if_expired(&mut token)
+            .await?
+        {
+            (self.callback)(token.clone()).await?;
+        }
+        token.header(request).await
+    }
+}
+    
