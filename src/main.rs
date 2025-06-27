@@ -9,11 +9,13 @@ use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::prelude::*;
 
-use twitter_v2::authorization::{Oauth2Client, Oauth2Token, Scope};
-use twitter_v2::oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
-use twitter_v2::TwitterApi;
+use crate::prelude::*;
+use crate::auth::oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
+use crate::auth::authorization::{Oauth2Client, Oauth2Token, Scope};
+use crate::TwitterApi;
+use tracing;
+use tracing_subscriber::prelude::*;
 
 pub struct Oauth2Ctx {
     client: Oauth2Client,
@@ -91,7 +93,7 @@ async fn callback(
     let token = client
         .request_token(code, verifier)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_FOUND, e.to_string()))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // set context for us with the twitter API
     ctx.lock().unwrap().token = Some(token);

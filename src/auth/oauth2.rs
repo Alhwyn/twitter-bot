@@ -323,7 +323,7 @@ where
     F: Future<Output = Result<()>> + Send,
 {
     async fn header(&self, request: &Request) -> Result<HeaderValue> {
-        let mut token = slef.token.write().await;
+        let mut token = self.token.write().await;
         if self 
             .oauth_client
             .refresh_roken_if_expired(&mut token)
