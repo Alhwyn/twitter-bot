@@ -13,7 +13,7 @@ use tower_http::trace::TraceLayer;
 use crate::prelude::*;
 use crate::auth::oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
 use crate::auth::authorization::{Oauth2Client, Oauth2Token, Scope};
-use crate::TwitterApi;
+use crate::utils::TwitterApi;
 use tracing;
 use tracing_subscriber::prelude::*;
 
