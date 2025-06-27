@@ -8,4 +8,32 @@ pub enum Error {
     Api(#[from] ApiError),
     #[error(transparent)]
     Request(#[from] reqwest::Error),
+    #[error(transparent)]
+    Url(#[from] url::ParseError),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    #[error("Invalid Authorization header value: {_0}")]
+    InvalidAuthorizationHeader(InvalidHeaderValue),
+    #[cfg(feature = "oauth2")]
+    #[error(transparent)]
+    Oauth2TokenError(
+        #[from]
+        oauth2::RequestTokenError<
+            oauth2::reqwest::Error<reqwest::Error>,
+            oauth2::basic::BasicErrorResponse,
+        >,
+    ),
+    #[cfg(feature = "oauth2")]
+    #[error(transparent)]
+    NoRefreshToken,
+    #[error("Other: {_0}")]
+    Custom(String),
 }
+
+impl Error {
+    pub fn custom(message: impl ToString) -> Self {
+        Self::Custom(message.to_string())
+    }
+}
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
