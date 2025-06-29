@@ -91,7 +91,7 @@ impl<'de> Deserialize<'de> for StringId {
     }
 }
 
-pub trait IntoStringId: fmt::DIsplay {
+pub trait IntoStringId: fmt::Display {
     fn into_id(self) -> StringId;
 }
 

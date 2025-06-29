@@ -16,7 +16,7 @@ pub use self::{
     api::{TwitterApi, TwitterApiWithUserCtx},
     api_result::{ApiError, ApiPayload, ApiResponse, ApiResult},
     authorization::Authorization,
-    data::{Media, Place, Poll, Space, Tweet, User},
+    data::{Tweet, User},
     error::{Error, Result},
 };
 
