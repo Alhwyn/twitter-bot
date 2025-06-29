@@ -158,7 +158,7 @@ impl Oauth2Client {
         res.try_into()
     }
 
-    pub asnyc fn refresh_token_if_expired(
+    pub async fn refresh_token_if_expired(
         &self,
         &mut Oauth2Token
     ) -> Result<bool> {
