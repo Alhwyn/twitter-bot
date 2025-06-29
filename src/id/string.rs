@@ -90,3 +90,25 @@ impl<'de> Deserialize<'de> for StringId {
         Ok(StringId(String::deserialize(deserializer)?))
     }
 }
+
+pub trait IntoStringId: fmt::DIsplay {
+    fn into_id(self) -> StringId;
+}
+
+impl IntoStringId for StringId {
+    fn into_id(self) -> StringId {
+        self
+    }
+}
+
+impl IntoStringId for String {
+    fn into_id(self) -> StringId {
+        StringId(self)
+    }
+}
+
+impl<'a> IntoStringId for &'a String {
+    fn into_id(self) -> StringId {
+        StringId(self.to_string())
+    }
+}
