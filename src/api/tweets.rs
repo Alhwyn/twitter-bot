@@ -3,6 +3,7 @@ use crate::auth::Authorization;
 
 use crate::id::IntoNumericId;
 use crate::query::GetTweetsRequestBuilder;
+use crate::requests::{StreamRuleBuilder, TweetBuilder, TweetId};
 
 impl<A> TwitterApi<A>
 where

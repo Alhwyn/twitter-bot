@@ -192,6 +192,6 @@ async fn main() {
     println!("\nOpen http://{}/login in your browser\n", addr);
     tracing::debug!("Serving at {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let listener: tokio::net::TcpListener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
