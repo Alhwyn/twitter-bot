@@ -8,8 +8,16 @@ use url::Url;
 use time::OffsetDateTime;
 use reqwest::header::HeaderValue;
 use reqwest::Request;
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use futures::Future;
+use async_trait::async_trait;
+use crate::error::{Error, Result};
+use crate::auth::Authorization;
 
-
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
 
 pub enum Scope {
     #[strum(serialize = "tweet.read")]
@@ -81,16 +89,17 @@ pub enum Scope {
 /// when interacting with the Twitter API. The client is tailored for Twitter's OAuth2 endpoints and handles
 /// token management, including refreshing and revoking tokens.
 ///
+#[derive(Clone, Debug)]
 pub struct Oauth2Client(BasicClient);
 
 impl Oauth2Client {
 
-    pub fn new(client_id: impl ToString, cleint_secret: impl ToString, callback_url: Url) -> self {
-        Self::new_impl(cleint_id, None::<String>, callback_url)
+    pub fn new(client_id: impl ToString, client_secret: impl ToString, callback_url: Url) -> Self {
+        Self::new_impl(client_id, Some(client_secret), callback_url)
     }
 
     fn new_impl(
-        cleint_id: impl ToString,
+        client_id: impl ToString,
         client_secret: Option<impl ToString>,
         callback_url: Url,
     ) -> Self {
@@ -114,57 +123,57 @@ impl Oauth2Client {
         &self,
         challenge: PkceCodeChallenge,
         scopes: impl IntoIterator<Item = Scope>,
-    ) -> (Url, CarfToken) {
+    ) -> (Url, CsrfToken) {
         self.0
             .authorize_url(CsrfToken::new_random)
-            .add_scopes(scopes.into_iter().map(|s| s.to_string()))
+            .add_scopes(scopes.into_iter().map(|s| oauth2::Scope::new(s.to_string())))
             .set_pkce_challenge(challenge)
             .url()
     }
 
     pub async fn request_token(
-        &self.0,
+        &self,
         code: AuthorizationCode,
         verifier: PkceCodeVerifier,
-    ) -> Result<Oauth2Client> {
-        let res = Self
+    ) -> Result<Oauth2Token> {
+        let res = self
             .0
             .exchange_code(code)
             .set_pkce_verifier(verifier)
-            .request_async(oauth2::reqwest::http_client)
+            .request_async(oauth2::reqwest::async_http_client)
             .await?;
         res.try_into()
     }
 
     pub async fn revoke_token(
-        $self, 
+        &self, 
         token: StandardRevocableToken
     ) -> Result<()> {
-        Ok(self.0
-            .revoke_token(token)
-            .request_async(oauth2::reqwest::http_client)
-            .await?)
-
+        self.0
+            .revoke_token(token)?
+            .request_async(oauth2::reqwest::async_http_client)
+            .await?;
+        Ok(())
     }
 
     pub async fn refresh_token(
         &self,
         token: &RefreshToken
-    ) -> Result<Oauth2Client> {
+    ) -> Result<Oauth2Token> {
         let res = self.0
             .exchange_refresh_token(token)
-            .request_async(oauth2::reqwest::http_client)
+            .request_async(oauth2::reqwest::async_http_client)
             .await?;
         res.try_into()
     }
 
     pub async fn refresh_token_if_expired(
         &self,
-        &mut Oauth2Token
+        token: &mut Oauth2Token
     ) -> Result<bool> {
         if token.is_expired() {
             if let Some(refresh_token) = token.refresh_token() {
-                *token = self.refresh_token(resfresh_token).await?;
+                *token = self.refresh_token(refresh_token).await?;
                 Ok(true)
             } else {
                 Err(Error::NoRefreshToken)
@@ -179,7 +188,7 @@ impl Oauth2Client {
 pub struct Oauth2Token {
     access_token: AccessToken,
     refresh_token: Option<RefreshToken>,
-    #[serde(with ="tiem::serde::rfc3339")]
+    #[serde(with = "time::serde::rfc3339")]
     expires: OffsetDateTime,
     scopes: Vec<Scope>,
 }
@@ -212,7 +221,7 @@ impl Oauth2Token {
     }
 }
 
-impl TryFrom<BasicTokenResposne> for Oauth2Token {
+impl TryFrom<BasicTokenResponse> for Oauth2Token {
     type Error = Error;
 
     fn try_from(token: BasicTokenResponse) -> Result<Self, Self::Error> {
@@ -237,7 +246,6 @@ impl TryFrom<BasicTokenResposne> for Oauth2Token {
                     s.parse::<Scope>().map_err(|_| {
                         Error::Oauth2TokenError(BasicRequestTokenError::Other(
                             "Invalid scope".to_string(),
-                            err
                         ))
                     })
                 })
@@ -256,8 +264,8 @@ impl Authorization for Oauth2Token {
 
 }
 
-fn np_op(_: Oauth2Token) -> futures::future::Ready<Result<()>> {
-    futures::future::ok(())
+fn no_op(_: Oauth2Token) -> futures::future::Ready<Result<()>> {
+    futures::future::ready(Ok(()))
 }
 
 pub type NoCallback = fn(Oauth2Token) -> futures::future::Ready<Result<()>>;
@@ -289,7 +297,7 @@ impl<C> RefreshableOauth2Token<C> {
         }
     }
 
-    pub async fn token(&self) -> RwLockLockReadGuard<'_, Oauth2Token> {
+    pub async fn token(&self) -> tokio::sync::RwLockReadGuard<'_, Oauth2Token> {
         self.token.read().await
     }
 
@@ -302,14 +310,14 @@ impl<C> RefreshableOauth2Token<C> {
 
 impl<C, F> RefreshableOauth2Token<C>
 where
-    C: fn(Oauth2Token) -> F + Send + Sync,
+    C: Fn(Oauth2Token) -> F + Send + Sync,
     F: Future<Output = Result<()>>,
 {
     pub async fn refresh(&self) -> Result<()> {
         let mut token = self.token.write().await;
         *token = self
             .oauth_client
-            .refresh_token(token.refresh_token.as_ref().ok_or(Error::NoRefreshtoken)?)
+            .refresh_token(token.refresh_token.as_ref().ok_or(Error::NoRefreshToken)?)
             .await?;
         (self.callback)(token.clone()).await?;
         Ok(())
@@ -317,7 +325,7 @@ where
 }
 
 #[async_trait]
-impl<>C, F> Authorization for RefreshableOauth2Token<C>
+impl<C, F> Authorization for RefreshableOauth2Token<C>
 where 
     C: Fn(Oauth2Token) -> F + Send + Sync,
     F: Future<Output = Result<()>> + Send,
@@ -326,7 +334,7 @@ where
         let mut token = self.token.write().await;
         if self 
             .oauth_client
-            .refresh_roken_if_expired(&mut token)
+            .refresh_token_if_expired(&mut token)
             .await?
         {
             (self.callback)(token.clone()).await?;

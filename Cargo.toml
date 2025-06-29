@@ -1,11 +1,15 @@
 [package]
 name = "tweetterminal"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[features]
+default = ["oauth2"]
+oauth2 = ["dep:oauth2"]
 
 [dependencies]
 async-trait = "0.1"
-axum = "0.4.8"
+axum = "0.7"
 futures = "0.3"
 oauth1 = { version = "0.5", package = "oauth1-request" }
 oauth2 = { version = "4.1", optional = true, default-features = false, features = ["reqwest"] }
@@ -18,16 +22,15 @@ serde_urlencoded = "0.7"
 strum = { version = "0.24", features = ["derive"] }
 thiserror = "1.0"
 time = { version = "0.3", features = ["serde", "serde-well-known"] }
-tokio = { version = "1.0", default-features = false, features = ["sync"] }
-tower-http = { version = "0.2.5", features = ["trace"] }
+tokio = { version = "1.0", default-features = false, features = ["sync", "macros", "rt-multi-thread"] }
+tower-http = { version = "0.5", features = ["trace"] }
+tracing = "0.1.32"
 tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
 
-url = "2.2"
+url = { version = "2.2", features = ["serde"] }
 
 [dev-dependencies]
 lazy_static = "1.4.0"
 rand = "0.8.5"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
-tracing = "0.1.32"
 time = { version = "0.3", features = ["macros"] }
 pretty_assertions = "1.2.0"

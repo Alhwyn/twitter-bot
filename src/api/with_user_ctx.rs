@@ -1,20 +1,25 @@
 use super::TwitterApi;
 use crate::api_result::ApiResult;
-use crate::authorization::Authorization;
-use crate::data::{Tweet, User};
+use crate::auth::Authorization;
+use crate::data::{User};
 use crate::error::Result;
-use crate::id::{IntoNumericId, NumericId};
+use crate::id::{NumericId};
 
 pub struct TwitterApiWithUserCtx<A> {
-    user_id: NumbericId,
+    user_id: NumericId,
     client: TwitterApi<A>,
 }
 
 impl<A> TwitterApi<A>
 where
-    A: Authorization,
+    A: Authorization + Clone,
 {
     pub async fn with_user_ctx(&self) -> Result<TwitterApiWithUserCtx<A>> {
-        let user_id = self.get_users_me().send().await?.into_data().unwrap().id;
+        // TODO: Implement actual user ID retrieval
+        let user_id = NumericId::new(0);
+        Ok(TwitterApiWithUserCtx {
+            user_id,
+            client: TwitterApi::new(self.auth().clone()),
+        })
     }
 }

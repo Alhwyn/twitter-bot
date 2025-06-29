@@ -25,6 +25,21 @@ pub enum Error {
     ),
     #[cfg(feature = "oauth2")]
     #[error(transparent)]
+    Oauth2RevocationError(
+        #[from]
+        oauth2::RequestTokenError<
+            oauth2::reqwest::Error<reqwest::Error>,
+            oauth2::StandardErrorResponse<oauth2::RevocationErrorResponseType>,
+        >,
+    ),
+    #[cfg(feature = "oauth2")]
+    #[error(transparent)]
+    Oauth2ConfigurationError(
+        #[from]
+        oauth2::ConfigurationError,
+    ),
+    #[cfg(feature = "oauth2")]
+    #[error("No refresh token available")]
     NoRefreshToken,
     #[error("Other: {_0}")]
     Custom(String),

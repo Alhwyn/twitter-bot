@@ -9,13 +9,13 @@ use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tower_http::trace::TraceLayer;
-
-use crate::prelude::*;
-use crate::auth::oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
-use crate::auth::authorization::{Oauth2Client, Oauth2Token, Scope};
-use crate::utils::TwitterApi;
 use tracing;
+
+use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
 use tracing_subscriber::prelude::*;
+use tweetterminal::auth::oauth2::{Oauth2Client, Oauth2Token, Scope};
+use tweetterminal::prelude::*;
+use tweetterminal::TwitterApi;
 
 pub struct Oauth2Ctx {
     client: Oauth2Client,
@@ -33,7 +33,7 @@ struct CallbackParams {
 async fn login(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
     let mut ctx = ctx.lock().unwrap();
 
-    // creater challenge 
+    // creater challenge
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
 
     // create teh auth url
@@ -52,12 +52,12 @@ async fn login(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRes
     ctx.state = Some(state);
 
     // redirect to auth url
-    Redirect::to(url.to_string().parse().unwrap())
+    Redirect::to(&url.to_string())
 }
 
 async fn callback(
     Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>,
-    Query(CallbackParams { code, state}): Query<CallbackParams>,
+    Query(CallbackParams { code, state }): Query<CallbackParams>,
 ) -> impl IntoResponse {
     let (client, verifier) = {
         let mut ctx = ctx.lock().unwrap();
@@ -72,13 +72,10 @@ async fn callback(
 
         // check state  returned to see if it mathces , or otherwise throw an error
         if state.secret() != saved_state.secret() {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "State does not match".to_string(),
-            ));
+            return Err((StatusCode::BAD_REQUEST, "State does not match".to_string()));
         }
 
-        // get verifier from ctx 
+        // get verifier from ctx
         let verifier = ctx.verifier.take().ok_or_else(|| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -91,20 +88,18 @@ async fn callback(
 
     // reqeust oauth2 token
     let token = client
-        .request_token(code, verifier)
+        .request_token(AuthorizationCode::new(code), verifier)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // set context for us with the twitter API
     ctx.lock().unwrap().token = Some(token);
 
-
-    Ok(Redirect::to("/tweets".parse().unwrap()))
+    Ok(Redirect::to("/tweets"))
 }
 
 async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
-
-    // get oaouth2 token 
+    // get oaouth2 token
 
     let (mut oauth_token, oauth_client) = {
         let ctx = ctx.lock().unwrap();
@@ -135,12 +130,9 @@ async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
         .await
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     Ok::<_, (StatusCode, String)>(Json(tweet.into_data()))
-
 }
 
-async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Client>>>) -> impl IntoResponse {
-
-
+async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
     // getting the oauth token
     let (oauth_token, oauth_client) = {
         let ctx = ctx.lock().unwrap();
@@ -149,7 +141,7 @@ async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Client>>>) -> impl Int
             .as_ref()
             .ok_or_else(|| (StatusCode::UNAUTHORIZED, "User not logged in!".to_string()))?
             .clone();
-        
+
         let client = ctx.client.clone();
         (token, client)
     };
@@ -162,10 +154,9 @@ async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Client>>>) -> impl Int
     Ok::<_, (StatusCode, String)>("Token revolked successfully!".to_string())
 }
 
-
 #[tokio::main]
-async fn main()  {
-    // init tracing 
+async fn main() {
+    // init tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG")
@@ -191,13 +182,16 @@ async fn main()  {
 
     // init server
     let app = Router::new()
-        .route("/login", get(login));
+        .route("/login", get(login))
+        .route("/callback", get(callback))
+        .route("/tweets", get(tweets))
+        .route("/revoke", get(revoke))
+        .layer(Extension(Arc::new(Mutex::new(oauth_ctx))))
+        .layer(TraceLayer::new_for_http());
 
     println!("\nOpen http://{}/login in your browser\n", addr);
     tracing::debug!("Serving at {}", addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
 
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }

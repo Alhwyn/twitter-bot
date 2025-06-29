@@ -1,10 +1,10 @@
 #[cfg(feature = "oauth2")]
-mod oauth2;
+pub mod oauth2;
 
 use crate::error::{Error, Result};
 use async_trait::async_trait;
-use reqwest::Request;
 use reqwest::header::HeaderValue;
+use reqwest::Request;
 use std::collections::BTreeSet;
 use std::fmt;
 

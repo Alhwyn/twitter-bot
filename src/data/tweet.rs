@@ -1,5 +1,5 @@
-use super::GeoCoordinates;
 use super::entity::FullTextEntities;
+use super::geo::GeoCoordinates;
 use super::withheld::Withheld;
 use crate::id::{NumericId, StringId};
 use serde::{Deserialize, Serialize};

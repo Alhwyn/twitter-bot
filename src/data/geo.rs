@@ -5,11 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Copy)]
-pub enum GeoCoordinates {
+pub enum GeoCoordinatesKind {
     Point,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Copy)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "arbitrary_precision", derive(Eq))]
 pub struct GeoCoordinates {
     #[serde(rename = "type")]
