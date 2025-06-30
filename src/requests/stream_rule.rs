@@ -1,12 +1,23 @@
 use crate::api::TwitterApi;
 use crate::api_result::ApiResult;
 use crate::auth::Authorization;
-use crate::data::{ReplySettings, Tweet};
-use crate::id::{IntoNumericId, IntoStringId, NumericId, StringId};
+use crate::id::{IntoNumericId, NumericId, StringId};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use url::Url;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamRule {
+    pub id: StringId,
+    pub value: String,
+    pub tag: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamRuleMeta {
+    pub sent: String,
+    pub result_count: Option<usize>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DraftStreamRuleAdd {
@@ -44,7 +55,7 @@ where
     }
 
     pub fn dry_run(&mut self) -> &mut Self {
-        self.url.append_query_val("dry_run", true);
+        self.url.query_pairs_mut().append_pair("dry_run", "true");
         self
     }
 
@@ -80,7 +91,7 @@ where
         self
     }
 
-    pub async fn send(&self) -> ApiResult<A, Vec<StreamRule>, StreamRuleMeta> {
+    pub async fn send(&self) -> ApiResult<Vec<StreamRule>> {
         self.client
             .send(
                 self.client
