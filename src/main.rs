@@ -145,13 +145,34 @@ async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
 
     let api = TwitterApi::new(oauth_token);
 
-    let tweet = api
+    // Use current timestamp to make each tweet unique
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let tweet_text = format!("Hello from my Twitter bot! 🤖 #{}", timestamp);
+
+    let response = api
         .post_tweet()
-        .text("Hello from my Twitter bot!".to_string())
+        .text(tweet_text)
         .send()
         .await
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    Ok::<_, (StatusCode, String)>(Json(tweet))
+        .map_err(|err| {
+            tracing::error!("Failed to post tweet: {}", err);
+            (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+        })?;
+
+    // Extract the tweet data from the API response
+    let tweet_data = response.payload.data.ok_or_else(|| {
+        tracing::error!("No tweet data in API response");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "No tweet data returned".to_string(),
+        )
+    })?;
+
+    Ok::<_, (StatusCode, String)>(Json(tweet_data))
 }
 
 async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
