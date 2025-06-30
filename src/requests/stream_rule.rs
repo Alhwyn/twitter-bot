@@ -46,6 +46,7 @@ impl<A> StreamRuleBuilder<A>
 where
     A: Authorization,
 {
+    #[allow(dead_code)]
     pub(crate) fn new(client: &TwitterApi<A>, url: Url) -> Self {
         Self {
             client: client.clone(),

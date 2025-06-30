@@ -1,7 +1,6 @@
 use super::TwitterApi;
-use crate::auth::Authorization;
 use crate::api_result::ApiResult;
-use crate::data::Tweet;
+use crate::auth::Authorization;
 use crate::id::IntoNumericId;
 use crate::requests::TweetBuilder;
 use reqwest::Method;
@@ -15,7 +14,10 @@ where
     }
 
     pub async fn delete_tweet(&self, id: impl IntoNumericId) -> ApiResult<()> {
-        self.send(self.request(Method::DELETE, self.url(format!("tweets/{}", id.into_id()))?))
-            .await
+        self.send(self.request(
+            Method::DELETE,
+            self.url(format!("tweets/{}", id.into_id()))?,
+        ))
+        .await
     }
 }

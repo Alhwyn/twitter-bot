@@ -12,7 +12,6 @@ pub struct UserUrlEntities {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(feature = "arbitrary_precision", derive(Eq))]
 pub struct UserEntities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<UserUrlEntities>,
@@ -20,7 +19,7 @@ pub struct UserEntities {
     pub description: Option<FullTextEntities>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UserPublicMetrics {
     pub followers_count: usize,
     pub following_count: usize,
@@ -29,7 +28,6 @@ pub struct UserPublicMetrics {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(feature = "arbitrary_preciession", derive(Eq))]
 pub struct User {
     pub id: NumericId,
     pub name: String,

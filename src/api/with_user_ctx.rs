@@ -1,12 +1,12 @@
 use super::TwitterApi;
-use crate::api_result::ApiResult;
 use crate::auth::Authorization;
-use crate::data::{User};
 use crate::error::Result;
-use crate::id::{NumericId};
+use crate::id::NumericId;
 
 pub struct TwitterApiWithUserCtx<A> {
+    #[allow(dead_code)]
     user_id: NumericId,
+    #[allow(dead_code)]
     client: TwitterApi<A>,
 }
 

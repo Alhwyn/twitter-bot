@@ -1,9 +1,7 @@
-use super::entity::FullTextEntities;
 use super::geo::GeoCoordinates;
 use super::withheld::Withheld;
-use crate::id::{NumericId, StringId};
+use crate::id::StringId;
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Tweet {

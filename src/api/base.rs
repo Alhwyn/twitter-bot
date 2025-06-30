@@ -54,16 +54,17 @@ where
             .api_error_for_status()
             .json()
             .await?;
-        
+
         let payload = ApiPayload {
             data: Some(response),
             meta: None,
             errors: None,
         };
-        
+
         Ok(ApiResponse::new(payload))
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn stream<T: DeserializeOwned + 'static>(
         &self,
         req: reqwest::RequestBuilder,
@@ -71,7 +72,7 @@ where
         let mut req = req.build()?;
         let authorization = self.auth.header(&req).await?;
         let _ = req.headers_mut().insert(AUTHORIZATION, authorization);
-        
+
         // For now, return a simple empty stream to get compilation working
         let empty_stream = futures::stream::empty();
         Ok(JsonStream::new(empty_stream))

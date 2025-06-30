@@ -5,7 +5,6 @@ use crate::data::{ReplySettings, Tweet};
 use crate::id::{IntoNumericId, IntoStringId, StringId};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use url::Url;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
