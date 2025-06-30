@@ -7,6 +7,7 @@ pub mod auth;
 pub mod data;
 pub mod error;
 pub mod id;
+pub mod requests;
 pub mod utils;
 
 pub use self::{

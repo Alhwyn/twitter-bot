@@ -1,6 +1,3 @@
-#[cfg(feature = "arbitrary_precision")]
-use serde_json::Number;
-
 use crate::id::NumericId;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -43,13 +40,9 @@ pub struct HashtagEntity {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(feature = "arbitrary_precision", derive(Eq))]
 pub struct AnnotationEntity {
     pub start: isize,
     pub end: isize,
-    #[cfg(feature = "arbitrary_precision")]
-    pub probability: Number,
-    #[cfg(not(feature = "arbitrary_precision"))]
     pub probability: f64,
     #[serde(rename = "type")]
     pub kind: String,
@@ -73,7 +66,6 @@ pub struct MentionEntity {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(feature = "arbitrary_precision", derive(Eq))]
 pub struct FullTextEntities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub urls: Option<Vec<UrlEntity>>,

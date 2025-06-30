@@ -47,23 +47,19 @@ where
         let authorization = self.auth.header(&req).await?;
         let _ = req.headers_mut().insert(AUTHORIZATION, authorization);
 
-        let response = self
-            .client
-            .execute(req)
-            .await?
-            .api_error_for_status()
-            .json()
-            .await?;
-        
-        let payload = ApiPayload {
-            data: Some(response),
-            meta: None,
-            errors: None,
-        };
-        
-        Ok(ApiResponse::new(payload))
+        let response = self.client.execute(req).await?.api_error_for_status();
+
+        // Get the response text for debugging
+        let response_text = response.text().await?;
+        tracing::debug!("Twitter API response: {}", response_text);
+
+        // Parse the Twitter API v2 response format
+        let api_response: ApiPayload<T> = serde_json::from_str(&response_text)?;
+
+        Ok(ApiResponse::new(api_response))
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn stream<T: DeserializeOwned + 'static>(
         &self,
         req: reqwest::RequestBuilder,
@@ -71,7 +67,7 @@ where
         let mut req = req.build()?;
         let authorization = self.auth.header(&req).await?;
         let _ = req.headers_mut().insert(AUTHORIZATION, authorization);
-        
+
         // For now, return a simple empty stream to get compilation working
         let empty_stream = futures::stream::empty();
         Ok(JsonStream::new(empty_stream))

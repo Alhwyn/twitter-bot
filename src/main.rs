@@ -14,7 +14,6 @@ use tracing;
 use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier};
 use tracing_subscriber::prelude::*;
 use tweetterminal::auth::oauth2::{Oauth2Client, Oauth2Token, Scope};
-use tweetterminal::prelude::*;
 use tweetterminal::TwitterApi;
 
 pub struct Oauth2Ctx {
@@ -33,21 +32,19 @@ struct CallbackParams {
 async fn login(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
     let mut ctx = ctx.lock().unwrap();
 
-    // creater challenge
+    // create challenge
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
 
-    // create teh auth url
+    // create the auth url
     let (url, state) = ctx.client.auth_url(
         challenge,
-        [
-            Scope::TweetRead,
-            Scope::TweetWrite,
-            Scope::UsersRead,
-            Scope::OfflineAccess,
-        ],
+        [Scope::TweetRead, Scope::TweetWrite, Scope::UsersRead],
     );
 
-    // set context for reference n callback
+    tracing::info!("Generated OAuth URL: {}", url);
+    tracing::info!("Generated state: {}", state.secret());
+
+    // set context for reference in callback
     ctx.verifier = Some(verifier);
     ctx.state = Some(state);
 
@@ -59,40 +56,64 @@ async fn callback(
     Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>,
     Query(CallbackParams { code, state }): Query<CallbackParams>,
 ) -> impl IntoResponse {
+    tracing::info!(
+        "OAuth callback received with code: {}",
+        &code[..10.min(code.len())]
+    );
+
     let (client, verifier) = {
         let mut ctx = ctx.lock().unwrap();
 
-        // get previous tate from from ctx (from login)
+        // get previous state from ctx (from login)
         let saved_state = ctx.state.take().ok_or_else(|| {
+            tracing::error!("No previous state found in context");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "No previous state found".to_string(),
+                "No previous state found. Please start the login process again.".to_string(),
             )
         })?;
 
-        // check state  returned to see if it mathces , or otherwise throw an error
+        // check state returned to see if it matches, or otherwise throw an error
         if state.secret() != saved_state.secret() {
-            return Err((StatusCode::BAD_REQUEST, "State does not match".to_string()));
+            tracing::error!(
+                "State mismatch: received {} vs saved {}",
+                state.secret(),
+                saved_state.secret()
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "State does not match - possible CSRF attack".to_string(),
+            ));
         }
 
         // get verifier from ctx
         let verifier = ctx.verifier.take().ok_or_else(|| {
+            tracing::error!("No PKCE verifier found in context");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "No PKCE verifier found".to_string(),
+                "No PKCE verifier found. Please start the login process again.".to_string(),
             )
         })?;
         let client = ctx.client.clone();
         (client, verifier)
     };
 
-    // reqeust oauth2 token
+    // request oauth2 token
+    tracing::info!("Exchanging authorization code for access token");
     let token = client
         .request_token(AuthorizationCode::new(code), verifier)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("Failed to exchange code for token: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("OAuth token exchange failed: {}", e),
+            )
+        })?;
 
-    // set context for us with the twitter API
+    tracing::info!("Successfully obtained OAuth2 token");
+
+    // set context for use with the twitter API
     ctx.lock().unwrap().token = Some(token);
 
     Ok(Redirect::to("/tweets"))
@@ -124,12 +145,34 @@ async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
 
     let api = TwitterApi::new(oauth_token);
 
-    let tweet = api
-        .get_tweets(20)
+    // Use current timestamp to make each tweet unique
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let tweet_text = format!("Hello from my Twitter bot! 🤖 #{}", timestamp);
+
+    let response = api
+        .post_tweet()
+        .text(tweet_text)
         .send()
         .await
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    Ok::<_, (StatusCode, String)>(Json(tweet.into_data()))
+        .map_err(|err| {
+            tracing::error!("Failed to post tweet: {}", err);
+            (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+        })?;
+
+    // Extract the tweet data from the API response
+    let tweet_data = response.payload.data.ok_or_else(|| {
+        tracing::error!("No tweet data in API response");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "No tweet data returned".to_string(),
+        )
+    })?;
+
+    Ok::<_, (StatusCode, String)>(Json(tweet_data))
 }
 
 async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
@@ -151,16 +194,19 @@ async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
         .revoke_token(oauth_token.revokable_token())
         .await
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    Ok::<_, (StatusCode, String)>("Token revolked successfully!".to_string())
+    Ok::<_, (StatusCode, String)>("Token revoked successfully!".to_string())
 }
 
 #[tokio::main]
 async fn main() {
+    // load environment variables from .env file
+    dotenv::dotenv().ok();
+
     // init tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG")
-                .unwrap_or_else(|_| "oauth2_callback=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "tweetterminal=info,tower_http=debug".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -192,6 +238,6 @@ async fn main() {
     println!("\nOpen http://{}/login in your browser\n", addr);
     tracing::debug!("Serving at {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let listener: tokio::net::TcpListener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
