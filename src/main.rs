@@ -38,12 +38,7 @@ async fn login(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRes
     // create the auth url
     let (url, state) = ctx.client.auth_url(
         challenge,
-        [
-            Scope::TweetRead,
-            Scope::TweetWrite,
-            Scope::UsersRead,
-            Scope::OfflineAccess,
-        ],
+        [Scope::TweetRead, Scope::TweetWrite, Scope::UsersRead],
     );
 
     tracing::info!("Generated OAuth URL: {}", url);
@@ -190,7 +185,7 @@ async fn main() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG")
-                .unwrap_or_else(|_| "oauth2_callback=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "tweetterminal=info,tower_http=debug".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
