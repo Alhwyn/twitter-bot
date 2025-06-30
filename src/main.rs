@@ -114,7 +114,37 @@ async fn callback(
     tracing::info!("Successfully obtained OAuth2 token");
 
     // set context for use with the twitter API
-    ctx.lock().unwrap().token = Some(token);
+    ctx.lock().unwrap().token = Some(token.clone());
+
+    // Automatically post a welcome tweet after successful login
+    tracing::info!("Posting welcome tweet...");
+    let api = TwitterApi::new(token);
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let welcome_text = format!(
+        "🎉 Successfully logged in to Twitter! Ready to tweet! #{}",
+        timestamp
+    );
+
+    match api.post_tweet().text(welcome_text).send().await {
+        Ok(response) => {
+            if let Some(tweet_data) = response.payload.data {
+                tracing::info!("Welcome tweet posted successfully! ID: {}", tweet_data.id);
+                return Ok(Redirect::to(&format!(
+                    "/tweets?welcome_tweet={}",
+                    tweet_data.id
+                )));
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to post welcome tweet: {}", e);
+            // Don't fail the login process if welcome tweet fails
+        }
+    }
 
     Ok(Redirect::to("/tweets"))
 }
