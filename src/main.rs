@@ -230,9 +230,9 @@ async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
     Ok::<_, (StatusCode, String)>("Token revoked successfully!".to_string())
 }
 
+#[allow(dead_code)]
 async fn interactive_tweeting(ctx: Arc<Mutex<Oauth2Ctx>>) {
     println!("\nOAuth login successful! You can now tweet interactively.");
-    println!("Type your tweets below (or 'quit' to exit):");
 
     loop {
         print!("\nEnter tweet: ");
@@ -413,7 +413,6 @@ async fn main() {
     println!("\nTwitter Bot Server Starting...");
     println!("Open http://{}/login in your browser to authenticate", addr);
     println!("Waiting for OAuth login...");
-    println!("After login, you can start tweeting from this terminal!");
 
     tracing::debug!("Serving at {}", addr);
 
