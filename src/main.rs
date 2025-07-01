@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+use std::io::{self, Write};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tower_http::trace::TraceLayer;
@@ -27,6 +28,11 @@ pub struct Oauth2Ctx {
 struct CallbackParams {
     code: String,
     state: CsrfToken,
+}
+
+#[derive(Deserialize)]
+struct TweetParams {
+    text: Option<String>,
 }
 
 async fn login(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
@@ -114,42 +120,16 @@ async fn callback(
     tracing::info!("Successfully obtained OAuth2 token");
 
     // set context for use with the twitter API
-    ctx.lock().unwrap().token = Some(token.clone());
+    ctx.lock().unwrap().token = Some(token);
 
-    // Automatically post a welcome tweet after successful login
-    tracing::info!("Posting welcome tweet...");
-    let api = TwitterApi::new(token);
-
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    let welcome_text = format!(
-        "🎉 Successfully logged in to Twitter! Ready to tweet! #{}",
-        timestamp
-    );
-
-    match api.post_tweet().text(welcome_text).send().await {
-        Ok(response) => {
-            if let Some(tweet_data) = response.payload.data {
-                tracing::info!("Welcome tweet posted successfully! ID: {}", tweet_data.id);
-                return Ok(Redirect::to(&format!(
-                    "/tweets?welcome_tweet={}",
-                    tweet_data.id
-                )));
-            }
-        }
-        Err(e) => {
-            tracing::error!("Failed to post welcome tweet: {}", e);
-            // Don't fail the login process if welcome tweet fails
-        }
-    }
-
+    // Redirect to tweets endpoint (no automatic posting)
     Ok(Redirect::to("/tweets"))
 }
 
-async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
+async fn tweets(
+    Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>,
+    Query(params): Query<TweetParams>,
+) -> impl IntoResponse {
     // get oaouth2 token
 
     let (mut oauth_token, oauth_client) = {
@@ -175,13 +155,32 @@ async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
 
     let api = TwitterApi::new(oauth_token);
 
-    // Use current timestamp to make each tweet unique
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    let tweet_text = format!("Hello from my Twitter bot! 🤖 #{}", timestamp);
+    // Only tweet if text parameter is provided
+    let tweet_text = match params.text {
+        Some(text) => {
+            if text.trim().is_empty() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "Tweet text cannot be empty".to_string(),
+                ));
+            }
+            if text.len() > 280 {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!("Tweet too long! Maximum 280 characters, got {}", text.len()),
+                ));
+            }
+            text
+        }
+        None => {
+            // No text provided, return a message instead of posting a default tweet
+            return Ok(Json(serde_json::json!({
+                "message": "Ready to tweet! Provide a 'text' parameter to post a tweet.",
+                "example": "http://127.0.0.1:3000/tweets?text=Hello%20World!",
+                "authenticated": true
+            })));
+        }
+    };
 
     let response = api
         .post_tweet()
@@ -202,7 +201,11 @@ async fn tweets(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
         )
     })?;
 
-    Ok::<_, (StatusCode, String)>(Json(tweet_data))
+    Ok::<_, (StatusCode, String)>(Json(serde_json::json!({
+        "id": tweet_data.id.to_string(),
+        "text": tweet_data.text,
+        "success": true
+    })))
 }
 
 async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoResponse {
@@ -225,6 +228,146 @@ async fn revoke(Extension(ctx): Extension<Arc<Mutex<Oauth2Ctx>>>) -> impl IntoRe
         .await
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     Ok::<_, (StatusCode, String)>("Token revoked successfully!".to_string())
+}
+
+async fn interactive_tweeting(ctx: Arc<Mutex<Oauth2Ctx>>) {
+    println!("\nOAuth login successful! You can now tweet interactively.");
+    println!("Type your tweets below (or 'quit' to exit):");
+
+    loop {
+        print!("\nEnter tweet: ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                let tweet_text = input.trim();
+
+                if tweet_text.is_empty() {
+                    continue;
+                }
+
+                if tweet_text.eq_ignore_ascii_case("quit")
+                    || tweet_text.eq_ignore_ascii_case("exit")
+                {
+                    println!("Goodbye!");
+                    break;
+                }
+
+                // Get OAuth token and post tweet directly
+                match post_tweet_direct(ctx.clone(), tweet_text.to_string()).await {
+                    Ok(tweet_id) => {
+                        println!("Tweet posted successfully! ID: {}", tweet_id);
+                    }
+                    Err(e) => {
+                        println!("Failed to post tweet: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Error reading input: {}", e);
+                break;
+            }
+        }
+    }
+}
+
+async fn post_tweet_direct(
+    ctx: Arc<Mutex<Oauth2Ctx>>,
+    tweet_text: String,
+) -> Result<String, String> {
+    // Get OAuth token
+    let (mut oauth_token, oauth_client) = {
+        let ctx = ctx.lock().unwrap();
+        let token = ctx.token.as_ref().ok_or("No OAuth token found")?.clone();
+        let client = ctx.client.clone();
+        (token, client)
+    };
+
+    // Refresh token if needed
+    if oauth_client
+        .refresh_token_if_expired(&mut oauth_token)
+        .await
+        .map_err(|e| format!("Token refresh failed: {}", e))?
+    {
+        // Save refreshed token
+        ctx.lock().unwrap().token = Some(oauth_token.clone());
+    }
+
+    // Post tweet
+    let api = TwitterApi::new(oauth_token);
+    let response = api
+        .post_tweet()
+        .text(tweet_text)
+        .send()
+        .await
+        .map_err(|e| format!("Tweet posting failed: {}", e))?;
+
+    // Extract tweet ID
+    let tweet_data = response.payload.data.ok_or("No tweet data in response")?;
+
+    Ok(tweet_data.id.to_string())
+}
+
+async fn interactive_tweeting_background(ctx: Arc<Mutex<Oauth2Ctx>>) {
+    // Wait for OAuth login to complete
+    loop {
+        let has_token = {
+            let ctx = ctx.lock().unwrap();
+            ctx.token.is_some()
+        };
+
+        if has_token {
+            break;
+        }
+
+        // Wait a bit before checking again
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    }
+
+    println!("\nlogin finish");
+
+    loop {
+        print!("\nenter tweet: ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                let tweet_text = input.trim();
+
+                if tweet_text.is_empty() {
+                    continue;
+                }
+
+                if tweet_text.eq_ignore_ascii_case("quit")
+                    || tweet_text.eq_ignore_ascii_case("exit")
+                {
+                    println!("Goodbye! (Server will keep running)");
+                    break;
+                }
+
+                if tweet_text.len() > 280 {
+                    println!("Tweet too long! ({} characters, max 280)", tweet_text.len());
+                    continue;
+                }
+
+                // Post tweet directly using the API
+                match post_tweet_direct(ctx.clone(), tweet_text.to_string()).await {
+                    Ok(tweet_id) => {
+                        println!("Tweet posted successfully! ID: {}", tweet_id);
+                    }
+                    Err(e) => {
+                        println!("Failed to post tweet: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Error reading input: {}", e);
+                break;
+            }
+        }
+    }
 }
 
 #[tokio::main]
@@ -256,18 +399,41 @@ async fn main() {
         token: None,
     };
 
+    let ctx = Arc::new(Mutex::new(oauth_ctx));
+
     // init server
     let app = Router::new()
         .route("/login", get(login))
         .route("/callback", get(callback))
         .route("/tweets", get(tweets))
         .route("/revoke", get(revoke))
-        .layer(Extension(Arc::new(Mutex::new(oauth_ctx))))
+        .layer(Extension(ctx.clone()))
         .layer(TraceLayer::new_for_http());
 
-    println!("\nOpen http://{}/login in your browser\n", addr);
+    println!("\nTwitter Bot Server Starting...");
+    println!("Open http://{}/login in your browser to authenticate", addr);
+    println!("Waiting for OAuth login...");
+    println!("After login, you can start tweeting from this terminal!");
+
     tracing::debug!("Serving at {}", addr);
 
-    let listener: tokio::net::TcpListener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+
+    // Start interactive tweeting in the background
+    let ctx_clone = ctx.clone();
+    tokio::spawn(async move {
+        // Wait a bit for the server to start
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        interactive_tweeting_background(ctx_clone).await;
+    });
+
+    // Run server
+    let server = axum::serve(listener, app);
+
+    tokio::select! {
+        _ = server => {},
+        _ = tokio::signal::ctrl_c() => {
+            println!("\nShutting down server...");
+        }
+    }
 }
